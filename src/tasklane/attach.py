@@ -3,19 +3,14 @@ from __future__ import annotations
 import json
 import signal
 import sys
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Callable, Iterator, TextIO
-from uuid import UUID
-
-import anyio
-from prefect.client.orchestration import get_client
-from prefect.client.schemas.filters import LogFilter, LogFilterFlowRunId
-from prefect.client.schemas.sorting import LogSort
-from prefect.states import Cancelled
 
 from .models import CommandTask
 from .routing import route_task
+from .state import SchedulerState
 
 
 SCHEDULER_EVENT_PREFIX = "__PCS_EVENT__ "
@@ -25,10 +20,14 @@ COMMAND_STDERR_PREFIX = "__PCS_STDERR__ "
 
 @dataclass(frozen=True)
 class SubmittedRun:
-    flow_run_id: str
+    run_id: str
     run_name: str
     queue_name: str
     resource_class: str
+
+    @property
+    def flow_run_id(self) -> str:
+        return self.run_id
 
 
 def encode_scheduler_event_message(event: str, **fields: object) -> str:
@@ -62,116 +61,15 @@ def _write_line(out: TextIO, line: str) -> None:
     out.flush()
 
 
-async def _submit_task(task: CommandTask) -> SubmittedRun:
-    route = route_task(task)
-    async with get_client() as client:
-        deployment = await client.read_deployment_by_name(route.deployment_name)
-        flow_run = await client.create_flow_run_from_deployment(
-            deployment.id,
-            parameters={"task_payload": task.model_dump(mode="json")},
-            name=task.run_name,
-        )
+def submit_task(task: CommandTask, *, state: SchedulerState | None = None) -> SubmittedRun:
+    scheduler_state = SchedulerState.initialize() if state is None else state
+    created = scheduler_state.create_run(task)
     return SubmittedRun(
-        flow_run_id=str(flow_run.id),
-        run_name=flow_run.name,
-        queue_name=route.work_queue_name,
-        resource_class=task.resource_class,
+        run_id=created.run_id,
+        run_name=created.task.run_name or created.run_id,
+        queue_name=created.queue_name,
+        resource_class=created.resource_class,
     )
-
-
-def submit_task(task: CommandTask) -> SubmittedRun:
-    return anyio.run(_submit_task, task)
-
-
-def _build_log_filter(flow_run_id: str) -> LogFilter:
-    return LogFilter(flow_run_id=LogFilterFlowRunId(any_=[UUID(flow_run_id)]))
-
-
-async def _attach_submitted_run(
-    submitted: SubmittedRun,
-    *,
-    out: TextIO,
-    poll_interval: float,
-    interrupt_requested: Callable[[], bool],
-) -> int:
-    last_waiting_state: str | None = None
-    log_offset = 0
-    remote_exit_code: int | None = None
-    cancellation_sent = False
-    async with get_client() as client:
-        while True:
-            try:
-                if interrupt_requested() and not cancellation_sent:
-                    _write_line(
-                        out,
-                        format_scheduler_event_line(
-                            "cancelling",
-                            run_id=submitted.flow_run_id,
-                            reason="keyboard_interrupt",
-                        ),
-                    )
-                    await client.set_flow_run_state(submitted.flow_run_id, Cancelled(), force=True)
-                    cancellation_sent = True
-                flow_run = await client.read_flow_run(submitted.flow_run_id)
-                logs = await client.read_logs(
-                    log_filter=_build_log_filter(submitted.flow_run_id),
-                    limit=200,
-                    offset=log_offset,
-                    sort=LogSort.TIMESTAMP_ASC,
-                )
-            except KeyboardInterrupt:
-                if cancellation_sent:
-                    return 130
-                _write_line(
-                    out,
-                    format_scheduler_event_line(
-                        "cancelling",
-                        run_id=submitted.flow_run_id,
-                        reason="keyboard_interrupt",
-                    ),
-                )
-                await client.set_flow_run_state(submitted.flow_run_id, Cancelled(), force=True)
-                cancellation_sent = True
-                await anyio.sleep(poll_interval)
-                continue
-
-            for log in logs:
-                log_offset += 1
-                parsed = parse_scheduler_event_message(log.message)
-                if parsed is not None:
-                    event = str(parsed.pop("event"))
-                    if event == "finished" and "exit_code" in parsed:
-                        remote_exit_code = int(parsed["exit_code"])
-                    _write_line(out, format_scheduler_event_line(event, **parsed))
-                    continue
-                if log.message.startswith(COMMAND_STDOUT_PREFIX):
-                    _write_line(out, log.message[len(COMMAND_STDOUT_PREFIX) :])
-                    continue
-                if log.message.startswith(COMMAND_STDERR_PREFIX):
-                    _write_line(out, log.message[len(COMMAND_STDERR_PREFIX) :])
-                    continue
-
-            state_name = flow_run.state_name or "UNKNOWN"
-            if not flow_run.state.is_final():
-                if state_name != "Running" and state_name != last_waiting_state:
-                    _write_line(
-                        out,
-                        format_scheduler_event_line(
-                            "waiting",
-                            run_id=submitted.flow_run_id,
-                            state=state_name,
-                            queue=submitted.queue_name,
-                        ),
-                    )
-                    last_waiting_state = state_name
-                await anyio.sleep(poll_interval)
-                continue
-
-            if state_name == "Completed":
-                return remote_exit_code if remote_exit_code is not None else 0
-            if state_name == "Cancelled":
-                return 130
-            return remote_exit_code if remote_exit_code is not None else 1
 
 
 def attach_submitted_run(
@@ -179,17 +77,80 @@ def attach_submitted_run(
     *,
     out: TextIO | None = None,
     poll_interval: float = 1.0,
+    state: SchedulerState | None = None,
 ) -> int:
+    from .scheduler import Scheduler
+
     stream = sys.stdout if out is None else out
+    scheduler_state = SchedulerState.initialize() if state is None else state
+    scheduler = Scheduler(scheduler_state, poll_interval=min(poll_interval, 0.2))
+    log_offset = 0
+    last_waiting_state: str | None = None
+    cancellation_sent = False
+
     with _capture_interrupt_requests() as interrupt_requested:
-        return anyio.run(
-            lambda: _attach_submitted_run(
-                submitted,
-                out=stream,
-                poll_interval=poll_interval,
-                interrupt_requested=interrupt_requested,
-            )
-        )
+        while True:
+            scheduler.tick(limit=10)
+            if interrupt_requested() and not cancellation_sent:
+                _write_line(
+                    stream,
+                    format_scheduler_event_line(
+                        "cancelling",
+                        run_id=submitted.run_id,
+                        reason="keyboard_interrupt",
+                    ),
+                )
+                scheduler_state.request_cancel(submitted.run_id)
+                cancellation_sent = True
+
+            current = scheduler_state.get_run(submitted.run_id)
+            if current is None:
+                raise RuntimeError(f"Unknown run id: {submitted.run_id}")
+
+            log_offset = _render_new_log_lines(current.log_path, offset=log_offset, out=stream)
+
+            if not current.is_final:
+                if current.status != "running" and current.status != last_waiting_state:
+                    _write_line(
+                        stream,
+                        format_scheduler_event_line(
+                            "waiting",
+                            run_id=submitted.run_id,
+                            state=current.status,
+                            queue=submitted.queue_name,
+                        ),
+                    )
+                    last_waiting_state = current.status
+                time.sleep(poll_interval)
+                continue
+
+            if current.status == "completed":
+                return current.exit_code or 0
+            if current.status == "cancelled":
+                return 130
+            return current.exit_code or 1
+
+
+def _render_new_log_lines(log_path, *, offset: int, out: TextIO) -> int:  # noqa: ANN001
+    if not log_path.exists():
+        return offset
+    with log_path.open("r", encoding="utf-8") as handle:
+        handle.seek(offset)
+        payload = handle.read()
+        next_offset = handle.tell()
+    for line in payload.splitlines():
+        parsed = parse_scheduler_event_message(line)
+        if parsed is not None:
+            event = str(parsed.pop("event"))
+            _write_line(out, format_scheduler_event_line(event, **parsed))
+            continue
+        if line.startswith(COMMAND_STDOUT_PREFIX):
+            _write_line(out, line[len(COMMAND_STDOUT_PREFIX) :])
+            continue
+        if line.startswith(COMMAND_STDERR_PREFIX):
+            _write_line(out, line[len(COMMAND_STDERR_PREFIX) :])
+            continue
+    return next_offset
 
 
 @contextmanager

@@ -6,21 +6,30 @@ import shlex
 import subprocess
 import threading
 import time
-from contextlib import suppress
 from datetime import datetime, timezone
-
-from prefect import flow, get_run_logger, runtime, task
-from prefect.artifacts import create_markdown_artifact
-from prefect.client.orchestration import get_client
-from prefect.concurrency.sync import concurrency
-from prefect.exceptions import CancelledRun
+from typing import Callable
 
 from .attach import encode_command_output_message, encode_scheduler_event_message
 from .models import CommandTask
-from .routing import route_task
 
 
-CANCEL_POLL_INTERVAL_SECONDS = 0.5
+CANCEL_POLL_INTERVAL_SECONDS = 0.1
+
+
+class CancelledRun(RuntimeError):
+    pass
+
+
+class _DefaultLogger:
+    def info(self, message: str) -> None:
+        return None
+
+    def warning(self, message: str) -> None:
+        return None
+
+
+def get_run_logger() -> _DefaultLogger:
+    return _DefaultLogger()
 
 
 def format_command(command: list[str]) -> str:
@@ -81,14 +90,6 @@ def build_execution_markdown(
     )
 
 
-@task
-def publish_execution_spec(task_payload: CommandTask, git_context: dict[str, object]) -> None:
-    create_markdown_artifact(
-        key=f"execution-spec-{int(time.time())}",
-        markdown=build_execution_markdown(task_payload, git_context=git_context),
-    )
-
-
 def build_result_markdown(result: dict[str, object]) -> str:
     return (
         "# Execution Result\n\n"
@@ -101,60 +102,58 @@ def build_result_markdown(result: dict[str, object]) -> str:
     )
 
 
-@task
-def publish_execution_result(result: dict[str, object]) -> None:
-    create_markdown_artifact(
-        key=f"execution-result-{int(time.time())}",
-        markdown=build_result_markdown(result),
-    )
-
-
-@task
-def run_command(task_payload: CommandTask) -> dict[str, object]:
+def run_command(
+    task_payload: CommandTask,
+    *,
+    cancellation_requested: Callable[[], bool] | None = None,
+) -> dict[str, object]:
     logger = get_run_logger()
     env = os.environ.copy()
     env.update(task_payload.env_overrides)
-    route = route_task(task_payload)
-    with concurrency(list(route.concurrency_slots), strict=True):
-        process = subprocess.Popen(
-            task_payload.command,
-            cwd=task_payload.cwd,
-            env=env,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            bufsize=1,
-        )
-        started_at = datetime.now(timezone.utc)
-        start_fields: dict[str, object] = {}
-        if getattr(process, "pid", None) is not None:
-            start_fields["pid"] = process.pid
-        logger.info(encode_scheduler_event_message("started", **start_fields))
+    process = subprocess.Popen(
+        task_payload.command,
+        cwd=task_payload.cwd,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=1,
+    )
+    started_at = datetime.now(timezone.utc)
+    logger.info(encode_scheduler_event_message("started", pid=process.pid))
 
-        stdout_thread = threading.Thread(
-            target=_stream_process_output,
-            args=(process.stdout, logger.info, "stdout"),
-            daemon=True,
-        )
-        stderr_thread = threading.Thread(
-            target=_stream_process_output,
-            args=(process.stderr, logger.warning, "stderr"),
-            daemon=True,
-        )
-        stdout_thread.start()
-        stderr_thread.start()
-        flow_run_id = runtime.flow_run.id
-        try:
-            return_code = _wait_for_process(process, flow_run_id=flow_run_id)
-        except CancelledRun:
-            logger.info(encode_scheduler_event_message("finished", status="cancelled", exit_code=130))
-            raise
-        except BaseException:
-            _terminate_process(process)
-            raise
-        finally:
-            stdout_thread.join(timeout=1)
-            stderr_thread.join(timeout=1)
+    stdout_thread = threading.Thread(
+        target=_stream_process_output,
+        args=(process.stdout, logger.info, "stdout"),
+        daemon=True,
+    )
+    stderr_thread = threading.Thread(
+        target=_stream_process_output,
+        args=(process.stderr, logger.warning, "stderr"),
+        daemon=True,
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+    try:
+        while True:
+            try:
+                return_code = process.poll()
+            except KeyboardInterrupt:
+                _terminate_process(process)
+                raise
+            if return_code is not None:
+                break
+            if cancellation_requested is not None and cancellation_requested():
+                _terminate_process(process)
+                logger.info(encode_scheduler_event_message("finished", status="cancelled", exit_code=130))
+                raise CancelledRun("Run cancellation detected.")
+            time.sleep(CANCEL_POLL_INTERVAL_SECONDS)
+    except BaseException:
+        _terminate_process(process)
+        raise
+    finally:
+        stdout_thread.join(timeout=1)
+        stderr_thread.join(timeout=1)
 
     finished_at = datetime.now(timezone.utc)
     status = "completed" if return_code == 0 else "failed"
@@ -169,6 +168,9 @@ def run_command(task_payload: CommandTask) -> dict[str, object]:
     }
 
 
+run_command.fn = run_command  # type: ignore[attr-defined]
+
+
 def _stream_process_output(stream: object, log_method: object, stream_name: str) -> None:
     if stream is None:
         return
@@ -179,34 +181,15 @@ def _stream_process_output(stream: object, log_method: object, stream_name: str)
 
 
 def _terminate_process(process: subprocess.Popen[str]) -> None:
-    with suppress(Exception):
+    try:
         process.terminate()
+    except Exception:
+        return None
 
 
-def _wait_for_process(process: subprocess.Popen[str], *, flow_run_id: str | None) -> int:
-    while True:
-        return_code = process.poll()
-        if return_code is not None:
-            return return_code
-        if flow_run_id and _is_flow_run_cancelled(flow_run_id):
-            _terminate_process(process)
-            raise CancelledRun("Flow run cancellation detected.")
-        time.sleep(CANCEL_POLL_INTERVAL_SECONDS)
-
-
-def _is_flow_run_cancelled(flow_run_id: str) -> bool:
-    with get_client(sync_client=True) as client:
-        flow_run = client.read_flow_run(flow_run_id)
-    return flow_run.state_name in {"Cancelling", "Cancelled"}
-
-
-@flow(name="command-executor")
 def run_command_task(task_payload: dict[str, object]) -> dict[str, object]:
     parsed = CommandTask.model_validate(task_payload)
-    git_context = capture_git_context(parsed.cwd)
-    publish_execution_spec(parsed, git_context)
     result = run_command(parsed)
-    publish_execution_result(result)
     if int(result["exit_code"]) != 0:
         raise RuntimeError(f"Command failed with exit code {result['exit_code']}")
     return result

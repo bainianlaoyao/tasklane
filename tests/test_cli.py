@@ -1,5 +1,4 @@
 import sys
-from uuid import uuid4
 
 import pytest
 
@@ -122,23 +121,21 @@ def test_main_attaches_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
         ]
     )
     task = build_command_task(args)
-    submitted = SubmittedRun(
-        flow_run_id=str(uuid4()),
-        run_name=task.run_name or "exp-001",
-        queue_name="gpu",
-        resource_class="gpu-exclusive",
-    )
+    submitted = SubmittedRun(run_id="run-123", run_name=task.run_name or "exp-001", queue_name="gpu", resource_class="gpu-exclusive")
     captured: dict[str, object] = {}
 
-    def fake_submit_task(task_arg):  # noqa: ANN001
+    def fake_submit_task(task_arg, *, state=None):  # noqa: ANN001
         captured["task"] = task_arg
+        captured["state"] = state
         return submitted
 
-    def fake_attach_submitted_run(submitted_run, *, out, poll_interval=1.0):  # noqa: ANN001
+    def fake_attach_submitted_run(submitted_run, *, out, poll_interval=1.0, state=None):  # noqa: ANN001
         captured["submitted"] = submitted_run
         captured["poll_interval"] = poll_interval
+        captured["attach_state"] = state
         return 0
 
+    monkeypatch.setattr("tasklane.cli.SchedulerState.initialize", lambda: "state")
     monkeypatch.setattr("tasklane.cli.submit_task", fake_submit_task)
     monkeypatch.setattr("tasklane.cli.attach_submitted_run", fake_attach_submitted_run)
 
@@ -165,16 +162,14 @@ def test_main_attaches_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result == 0
     assert captured["task"] == task
     assert captured["submitted"] == submitted
+    assert captured["state"] == "state"
+    assert captured["attach_state"] == "state"
 
 
 def test_main_skips_attach_in_detach_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    submitted = SubmittedRun(
-        flow_run_id=str(uuid4()),
-        run_name="exp-001",
-        queue_name="gpu",
-        resource_class="gpu-exclusive",
-    )
-    monkeypatch.setattr("tasklane.cli.submit_task", lambda task: submitted)
+    submitted = SubmittedRun(run_id="run-123", run_name="exp-001", queue_name="gpu", resource_class="gpu-exclusive")
+    monkeypatch.setattr("tasklane.cli.SchedulerState.initialize", lambda: "state")
+    monkeypatch.setattr("tasklane.cli.submit_task", lambda task, *, state=None: submitted)
 
     def fail_attach(*args, **kwargs):  # noqa: ANN002, ANN003
         raise AssertionError("attach should not be called in detach mode")
@@ -195,3 +190,28 @@ def test_main_skips_attach_in_detach_mode(monkeypatch: pytest.MonkeyPatch) -> No
     )
 
     assert result == 0
+
+
+def test_main_runs_daemon_subcommand(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeScheduler:
+        def __init__(self, state, *, poll_interval: float) -> None:  # noqa: ANN001
+            captured["state"] = state
+            captured["poll_interval"] = poll_interval
+
+        def run_once(self, *, limit: int) -> int:
+            captured["limit"] = limit
+            return 1
+
+    monkeypatch.setattr("tasklane.cli.SchedulerState.initialize", lambda: "state")
+    monkeypatch.setattr("tasklane.cli.Scheduler", FakeScheduler)
+
+    result = main(["daemon", "--once", "--poll-interval", "0.5"])
+
+    assert result == 0
+    assert captured == {
+        "state": "state",
+        "poll_interval": 0.5,
+        "limit": 10,
+    }

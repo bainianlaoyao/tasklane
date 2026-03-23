@@ -1,11 +1,11 @@
 [project]
 name = "tasklane"
 version = "0.1.0"
-description = "Resource-aware local command scheduler built on Prefect 3."
+description = "Resource-aware local command scheduler for queued CPU/GPU experiment runs."
 readme = "README.md"
 requires-python = ">=3.12"
 license = {file = "LICENSE"}
-keywords = ["prefect", "scheduler", "experiments", "gpu", "cli"]
+keywords = ["scheduler", "experiments", "gpu", "sqlite", "cli"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -20,7 +20,6 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
-    "prefect>=3.0,<4.0",
     "pydantic>=2.9,<3.0",
 ]
 

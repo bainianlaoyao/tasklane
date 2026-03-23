@@ -1,96 +1,68 @@
 # Tasklane
 
-Resource-aware local command scheduler built on Prefect 3.
+Tasklane is a local command scheduler for single-host experiment workflows.
 
-Tasklane turns arbitrary shell or Python commands into queued Prefect runs with explicit CPU/GPU resource metadata. It is designed for single-host experiment workflows where you need:
+It keeps your original command intact, queues runs in sqlite, enforces simple CPU/GPU resource classes, streams output back to the terminal, and supports cancellation with `Ctrl+C`.
 
-- explicit CPU vs GPU scheduling
-- prevention of host or GPU oversubscription
-- queue-based execution
-- attached terminal behavior by default
-- a thin wrapper that keeps the original command intact
+## What it solves
 
-## Features
+- queue arbitrary shell or Python commands
+- separate `gpu`, `cpu-exclusive`, and `cpu-light` workloads
+- prevent host or GPU oversubscription
+- keep the default terminal UX blocking and observable
+- make cancellation propagate to the real child process
 
-- Arbitrary command submission with minimal wrapping
-- Explicit resource classes:
-  - `gpu-exclusive`
-  - `gpu-host-exclusive`
-  - `cpu-exclusive`
-  - `cpu-light`
-- Default attached mode:
-  - waits for remote completion
-  - streams command output back to the local terminal
-  - exits with the remote command status
-- Scheduler event lines:
-  - `submitted`
-  - `waiting`
-  - `started`
-  - `cancelling`
-  - `finished`
-- `Ctrl+C` propagation:
-  - attached client requests cancellation
-  - worker terminates the remote child process
+## Resource Classes
 
-## Requirements
+- `gpu-exclusive`
+  For GPU jobs that can share the host with CPU work.
+- `gpu-host-exclusive`
+  For GPU jobs that also need exclusive host CPU / memory / IO.
+- `cpu-exclusive`
+  For heavy CPU or memory jobs that should not share the host.
+- `cpu-light`
+  For light evaluation, post-processing, or report generation.
 
-- Python `>=3.12`
-- [uv](https://docs.astral.sh/uv/)
-- Prefect local server or another reachable Prefect 3 API
+The built-in slot model is:
+
+- `gpu-0 = 1`
+- `host-exclusive = 1`
+- `cpu-light = 2`
 
 ## Install
 
 ### Windows
 
-Clone the repository, then run:
-
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1
 ```
 
-The script defaults to installing the checkout that contains the script, so it also works when invoked from another directory.
-
-This installs the global commands:
-
-- `tasklane`
-- `tasklane-bootstrap`
-
 ### Linux
-
-Clone the repository, then run:
 
 ```bash
 bash ./scripts/install-linux.sh
 ```
 
-The script defaults to installing the checkout that contains the script, so it also works when invoked from another directory.
-
-This installs the global commands:
+Both scripts install:
 
 - `tasklane`
 - `tasklane-bootstrap`
+- `pcs` and `pcs-bootstrap` as legacy aliases
+- `prefect-submit` and `prefect-bootstrap` as compatibility aliases for older setups
 
-### Install from a package spec
-
-If you later publish to PyPI or want to install directly from a Git URL, both install scripts accept an explicit source argument. Examples:
+You can also install directly from GitHub:
 
 ```powershell
-.\scripts\install-windows.ps1 git+https://github.com/<owner>/<repo>.git
+uv tool install git+https://github.com/bainianlaoyao/tasklane.git
 ```
 
 ```bash
-bash ./scripts/install-linux.sh git+https://github.com/<owner>/<repo>.git
+uv tool install git+https://github.com/bainianlaoyao/tasklane.git
 ```
 
 ## Quick Start
 
-### 1. Start Prefect
-
-```powershell
-prefect server start
-```
-
-### 2. Bootstrap the local queues and deployments
+### 1. Initialize local Tasklane state
 
 Preview:
 
@@ -104,32 +76,22 @@ Apply:
 tasklane-bootstrap --apply
 ```
 
-Bootstrap creates:
+By default, Tasklane stores state under:
 
-- work pool: `local-process`
-- work queues:
-  - `gpu`
-  - `cpu-exclusive`
-  - `cpu-light`
-- global concurrency limits:
-  - `gpu-0 = 1`
-  - `host-exclusive = 1`
-  - `cpu-light = 2`
-- deployments:
-  - `command/gpu-exclusive`
-  - `command/gpu-host-exclusive`
-  - `command/cpu-exclusive`
-  - `command/cpu-light`
+- Windows: `%LOCALAPPDATA%\tasklane`
+- Linux: `~/.local/share/tasklane`
 
-### 3. Start workers
+Override with:
 
 ```powershell
-prefect worker start --pool local-process --work-queue gpu --type process --limit 1
-prefect worker start --pool local-process --work-queue cpu-exclusive --type process --limit 1
-prefect worker start --pool local-process --work-queue cpu-light --type process --limit 2
+$env:TASKLANE_HOME = "D:\Data\Tasklane"
 ```
 
-### 4. Submit a command
+```bash
+export TASKLANE_HOME=/data/tasklane
+```
+
+### 2. Submit a command in attached mode
 
 ```powershell
 tasklane `
@@ -142,86 +104,99 @@ tasklane `
   -- uv run python user_data/tabicl_pipeline/generate_random_anchor_predictions.py
 ```
 
-## Attached Terminal Behavior
+Attached mode:
 
-`tasklane` attaches by default. That means it behaves like a blocking terminal command:
-
-- it submits the run
-- prints scheduler event lines
-- waits for remote completion
-- streams remote command output back to the terminal
-- returns the remote command exit code
+- submits the run
+- starts local scheduling if needed
+- waits for completion
+- streams stdout and stderr
+- returns the child exit code
 
 Typical output:
 
 ```text
 [scheduler] submitted run_id=... queue=gpu resource=gpu-exclusive
-[scheduler] waiting run_id=... state=Scheduled queue=gpu
+[scheduler] waiting run_id=... state=queued queue=gpu
 [scheduler] started pid=12345
 loading data...
 epoch 1/10
 [scheduler] finished status=completed exit_code=0
 ```
 
-Use `--detach` for fire-and-forget submission:
+### 3. Run a daemon for detached or shared queue processing
+
+If you want queued detached runs to keep progressing without an attached terminal, run:
+
+```powershell
+tasklane daemon
+```
+
+Useful for:
+
+- `--detach` submissions
+- long-lived shared queues
+- keeping the scheduler alive across multiple terminals
+
+## Attached vs Detached
+
+Default mode is attached.
+
+Use `--detach` only when you intentionally want fire-and-forget submission:
 
 ```powershell
 tasklane `
   --cwd E:\freqtrade `
   --project tabicl `
-  --resource gpu-exclusive `
+  --resource cpu-exclusive `
   --detach `
   -- uv run python train.py
 ```
 
-## Resource Classes
+Detached runs need some scheduler process to be active, usually `tasklane daemon`.
 
-- `gpu-exclusive`
-  - For GPU jobs that can share the host with CPU work
-  - Concurrency slots: `gpu-0`
-- `gpu-host-exclusive`
-  - For GPU jobs that also need exclusive host CPU / memory / IO
-  - Concurrency slots: `gpu-0`, `host-exclusive`
-- `cpu-exclusive`
-  - For CPU / memory heavy jobs
-  - Concurrency slots: `host-exclusive`
-- `cpu-light`
-  - For lightweight post-processing, evaluation, or other shareable CPU work
-  - Concurrency slots: `cpu-light`
+## Migration Note
 
-## Install Script Notes
+Older Tasklane revisions used Prefect for orchestration.
 
-Both install scripts:
+Current Tasklane is fully local:
 
-- use `uv tool install`
-- install from the script's checkout in editable mode by default
-- install from any explicit local path or package spec you pass in
-- call `uv tool update-shell`
-- expose `tasklane` and `tasklane-bootstrap` on `PATH`
+- no Prefect server
+- no Prefect worker
+- no remote API
+- local sqlite state and local log files only
 
-## Publishing Notes
+The legacy entry points `pcs`, `pcs-bootstrap`, `prefect-submit`, and `prefect-bootstrap` are still installed so older scripts can keep working.
 
-Recommended GitHub release shape:
+## Local State Model
 
-- publish the repository as source-first
-- keep installation based on `uv tool install`
-- document Git install first, PyPI optional later
+Tasklane does not use Prefect.
 
-After publishing, users can install directly without cloning:
+Runtime state lives in:
 
-```powershell
-uv tool install git+https://github.com/<owner>/tasklane.git
-```
+- a local sqlite database
+- per-run log files
 
-```bash
-uv tool install git+https://github.com/<owner>/tasklane.git
-```
+That state includes:
+
+- submitted command payload
+- current run status
+- requested cancellation state
+- exit code
+- per-run scheduler and command logs
 
 ## Development
 
 ```powershell
 uv sync --group dev
 uv run --group dev pytest
+```
+
+Install the editable tool locally:
+
+```powershell
+uv tool install -e . --force
+tasklane --help
+tasklane-bootstrap --help
 ```
 
 ## Agent Skill
@@ -231,20 +206,19 @@ This repository also ships with a reusable agent skill:
 - [Skill Install Guide](./docs/SKILL-INSTALL.md)
 - [Skill File](./SKILL.md)
 
-Use it if you want Codex or Claude Code to understand Tasklane conventions and operating workflow automatically.
-
 ## Repository Layout
 
 ```text
 tasklane/
-  CONTRIBUTING.md
   docs/
-  RELEASING.md
   scripts/
   src/tasklane/
+    attach.py
+    bootstrap.py
+    cli.py
+    scheduler.py
+    state.py
   tests/
-  bootstrap_prefect.py
-  submit_experiment.py
 ```
 
 ## License

@@ -25,4 +25,4 @@ uv run tasklane-bootstrap
 
 - Add or update tests for behavior changes.
 - Update `README.md` when CLI, install, or operational behavior changes.
-- Avoid committing local Prefect state, caches, logs, or temporary test artifacts.
+- Avoid committing local Tasklane state, caches, logs, or temporary test artifacts.

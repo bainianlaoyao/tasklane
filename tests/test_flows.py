@@ -4,9 +4,8 @@ import pytest
 
 import tasklane.flows as flows
 from tasklane.attach import COMMAND_STDERR_PREFIX, COMMAND_STDOUT_PREFIX, SCHEDULER_EVENT_PREFIX
-from tasklane.flows import build_execution_markdown, build_result_markdown, run_command
+from tasklane.flows import CancelledRun, build_execution_markdown, build_result_markdown, run_command
 from tasklane.models import CommandTask
-from prefect.exceptions import CancelledRun
 
 
 def test_build_execution_markdown_contains_command_and_metadata() -> None:
@@ -74,15 +73,7 @@ def test_run_command_streams_logs_and_emits_scheduler_markers(monkeypatch: pytes
                 return None
             return self.returncode
 
-    class NoopConcurrency:
-        def __enter__(self) -> None:
-            return None
-
-        def __exit__(self, exc_type, exc, tb) -> None:
-            return None
-
     monkeypatch.setattr(flows, "get_run_logger", lambda: FakeLogger())
-    monkeypatch.setattr(flows, "concurrency", lambda *args, **kwargs: NoopConcurrency())
     monkeypatch.setattr(flows.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
 
     result = run_command.fn(task)
@@ -129,16 +120,8 @@ def test_run_command_terminates_child_process_when_interrupted(monkeypatch: pyte
         def kill(self) -> None:
             self.killed = True
 
-    class NoopConcurrency:
-        def __enter__(self) -> None:
-            return None
-
-        def __exit__(self, exc_type, exc, tb) -> None:
-            return None
-
     fake_process = FakeProcess()
     monkeypatch.setattr(flows, "get_run_logger", lambda: FakeLogger())
-    monkeypatch.setattr(flows, "concurrency", lambda *args, **kwargs: NoopConcurrency())
     monkeypatch.setattr(flows.subprocess, "Popen", lambda *args, **kwargs: fake_process)
 
     with pytest.raises(KeyboardInterrupt):
@@ -147,7 +130,7 @@ def test_run_command_terminates_child_process_when_interrupted(monkeypatch: pyte
     assert fake_process.terminated is True
 
 
-def test_run_command_terminates_child_process_when_flow_run_is_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_command_terminates_child_process_when_cancel_requested(monkeypatch: pytest.MonkeyPatch) -> None:
     task = CommandTask(
         cwd=r"E:\freqtrade",
         command=["python", "job.py"],
@@ -184,33 +167,12 @@ def test_run_command_terminates_child_process_when_flow_run_is_cancelled(monkeyp
         def kill(self) -> None:
             self.killed = True
 
-    class NoopConcurrency:
-        def __enter__(self) -> None:
-            return None
-
-        def __exit__(self, exc_type, exc, tb) -> None:
-            return None
-
-    class FakeClient:
-        def read_flow_run(self, flow_run_id: str):  # noqa: ANN001
-            assert flow_run_id == "flow-run-123"
-            return type("FlowRun", (), {"state_name": "Cancelled"})()
-
-        def __enter__(self):  # noqa: ANN204
-            return self
-
-        def __exit__(self, exc_type, exc, tb) -> None:
-            return None
-
     fake_process = FakeProcess()
     monkeypatch.setattr(flows, "get_run_logger", lambda: FakeLogger())
-    monkeypatch.setattr(flows, "concurrency", lambda *args, **kwargs: NoopConcurrency())
     monkeypatch.setattr(flows.subprocess, "Popen", lambda *args, **kwargs: fake_process)
-    monkeypatch.setattr(flows, "get_client", lambda sync_client=False: FakeClient())
-    monkeypatch.setattr(flows.runtime.flow_run, "id", "flow-run-123")
     monkeypatch.setattr(flows.time, "sleep", lambda _: None)
 
     with pytest.raises(CancelledRun):
-        run_command.fn(task)
+        run_command.fn(task, cancellation_requested=lambda: True)
 
     assert fake_process.terminated is True

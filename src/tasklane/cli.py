@@ -7,6 +7,8 @@ from typing import Sequence
 
 from .attach import SubmittedRun, attach_submitted_run, format_scheduler_event_line, submit_task
 from .models import CommandTask, RESOURCE_CLASSES, ResourceClass
+from .scheduler import Scheduler
+from .state import SchedulerState
 
 
 @dataclass(frozen=True)
@@ -20,6 +22,12 @@ class SubmitArgs:
     env: list[str]
     detach: bool
     command: list[str]
+
+
+@dataclass(frozen=True)
+class DaemonArgs:
+    poll_interval: float
+    once: bool
 
 
 def parse_submit_args(argv: Sequence[str]) -> SubmitArgs:
@@ -54,6 +62,14 @@ def parse_submit_args(argv: Sequence[str]) -> SubmitArgs:
     )
 
 
+def parse_daemon_args(argv: Sequence[str]) -> DaemonArgs:
+    parser = argparse.ArgumentParser(description="Run the local Tasklane daemon.")
+    parser.add_argument("--poll-interval", type=float, default=0.2)
+    parser.add_argument("--once", action="store_true", help="Run one scheduling batch and exit.")
+    namespace = parser.parse_args(list(argv))
+    return DaemonArgs(poll_interval=float(namespace.poll_interval), once=bool(namespace.once))
+
+
 def _parse_env_overrides(entries: Sequence[str]) -> dict[str, str]:
     env: dict[str, str] = {}
     for entry in entries:
@@ -79,25 +95,42 @@ def build_command_task(args: SubmitArgs) -> CommandTask:
         notes=args.notes,
     )
 
+
 def print_submitted_event(submitted: SubmittedRun) -> None:
     print(
         format_scheduler_event_line(
             "submitted",
-            run_id=submitted.flow_run_id,
+            run_id=submitted.run_id,
             queue=submitted.queue_name,
             resource=submitted.resource_class,
         )
     )
 
 
+def _run_daemon(argv: Sequence[str]) -> int:
+    args = parse_daemon_args(argv)
+    state = SchedulerState.initialize()
+    scheduler = Scheduler(state, poll_interval=args.poll_interval)
+    if args.once:
+        scheduler.run_once(limit=10)
+        return 0
+    scheduler.run_forever(limit=10)
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = parse_submit_args(sys.argv[1:] if argv is None else argv)
+    effective_argv = list(sys.argv[1:] if argv is None else argv)
+    if effective_argv and effective_argv[0] == "daemon":
+        return _run_daemon(effective_argv[1:])
+
+    args = parse_submit_args(effective_argv)
+    state = SchedulerState.initialize()
     task = build_command_task(args)
-    submitted = submit_task(task)
+    submitted = submit_task(task, state=state)
     print_submitted_event(submitted)
     if args.detach:
         return 0
-    return attach_submitted_run(submitted, out=sys.stdout)
+    return attach_submitted_run(submitted, out=sys.stdout, state=state)
 
 
 if __name__ == "__main__":

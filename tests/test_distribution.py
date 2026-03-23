@@ -16,6 +16,8 @@ def test_pyproject_exposes_short_global_commands() -> None:
     assert scripts["tasklane-bootstrap"] == "tasklane.bootstrap:main"
     assert scripts["pcs"] == "tasklane.cli:main"
     assert scripts["pcs-bootstrap"] == "tasklane.bootstrap:main"
+    assert scripts["prefect-submit"] == "tasklane.cli:main"
+    assert scripts["prefect-bootstrap"] == "tasklane.bootstrap:main"
 
 
 def test_install_scripts_exist_for_windows_and_linux() -> None:

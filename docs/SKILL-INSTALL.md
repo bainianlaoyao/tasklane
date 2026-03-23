@@ -10,7 +10,7 @@ Use it when you want an AI coding agent to understand how to operate Tasklane wi
 
 - Tasklane runtime state model
 - resource classes and queue semantics
-- standard bootstrap and worker workflow
+- standard bootstrap and daemon workflow
 - attached CLI behavior
 - important boundaries for safe usage
 - verification commands
