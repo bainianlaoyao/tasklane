@@ -1,0 +1,49 @@
+[project]
+name = "prefect-command-scheduler"
+version = "0.1.0"
+description = "Resource-aware local command scheduler built on Prefect 3."
+readme = "README.md"
+requires-python = ">=3.12"
+license = {file = "LICENSE"}
+keywords = ["prefect", "scheduler", "experiments", "gpu", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: System :: Distributed Computing",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "prefect>=3.0,<4.0",
+    "pydantic>=2.9,<3.0",
+]
+
+[project.scripts]
+pcs = "prefect_command_scheduler.cli:main"
+pcs-bootstrap = "prefect_command_scheduler.bootstrap:main"
+prefect-submit = "prefect_command_scheduler.cli:main"
+prefect-bootstrap = "prefect_command_scheduler.bootstrap:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<9.0",
+]
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

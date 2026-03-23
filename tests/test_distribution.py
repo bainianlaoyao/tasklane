@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+import tomllib
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_pyproject_exposes_short_global_commands() -> None:
+    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    scripts = data["project"]["scripts"]
+
+    assert scripts["pcs"] == "prefect_command_scheduler.cli:main"
+    assert scripts["pcs-bootstrap"] == "prefect_command_scheduler.bootstrap:main"
+
+
+def test_install_scripts_exist_for_windows_and_linux() -> None:
+    assert (REPO_ROOT / "scripts" / "install-windows.ps1").exists()
+    assert (REPO_ROOT / "scripts" / "install-linux.sh").exists()
+
+
+def test_repository_has_open_source_metadata_docs() -> None:
+    assert (REPO_ROOT / "LICENSE").exists()
+    assert (REPO_ROOT / "CONTRIBUTING.md").exists()
+    assert (REPO_ROOT / "RELEASING.md").exists()
