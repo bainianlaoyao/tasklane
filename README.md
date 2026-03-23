@@ -1,8 +1,8 @@
-# Prefect Command Scheduler
+# Tasklane
 
 Resource-aware local command scheduler built on Prefect 3.
 
-This project turns arbitrary shell or Python commands into queued Prefect runs with explicit CPU/GPU resource metadata. It is designed for single-host experiment workflows where you need:
+Tasklane turns arbitrary shell or Python commands into queued Prefect runs with explicit CPU/GPU resource metadata. It is designed for single-host experiment workflows where you need:
 
 - explicit CPU vs GPU scheduling
 - prevention of host or GPU oversubscription
@@ -52,8 +52,8 @@ The script defaults to installing the checkout that contains the script, so it a
 
 This installs the global commands:
 
-- `pcs`
-- `pcs-bootstrap`
+- `tasklane`
+- `tasklane-bootstrap`
 
 ### Linux
 
@@ -67,8 +67,8 @@ The script defaults to installing the checkout that contains the script, so it a
 
 This installs the global commands:
 
-- `pcs`
-- `pcs-bootstrap`
+- `tasklane`
+- `tasklane-bootstrap`
 
 ### Install from a package spec
 
@@ -95,13 +95,13 @@ prefect server start
 Preview:
 
 ```powershell
-pcs-bootstrap
+tasklane-bootstrap
 ```
 
 Apply:
 
 ```powershell
-pcs-bootstrap --apply
+tasklane-bootstrap --apply
 ```
 
 Bootstrap creates:
@@ -132,7 +132,7 @@ prefect worker start --pool local-process --work-queue cpu-light --type process 
 ### 4. Submit a command
 
 ```powershell
-pcs `
+tasklane `
   --cwd E:\freqtrade `
   --project tabicl `
   --resource gpu-exclusive `
@@ -144,7 +144,7 @@ pcs `
 
 ## Attached Terminal Behavior
 
-`pcs` attaches by default. That means it behaves like a blocking terminal command:
+`tasklane` attaches by default. That means it behaves like a blocking terminal command:
 
 - it submits the run
 - prints scheduler event lines
@@ -166,7 +166,7 @@ epoch 1/10
 Use `--detach` for fire-and-forget submission:
 
 ```powershell
-pcs `
+tasklane `
   --cwd E:\freqtrade `
   --project tabicl `
   --resource gpu-exclusive `
@@ -197,7 +197,7 @@ Both install scripts:
 - install from the script's checkout in editable mode by default
 - install from any explicit local path or package spec you pass in
 - call `uv tool update-shell`
-- expose `pcs` and `pcs-bootstrap` on `PATH`
+- expose `tasklane` and `tasklane-bootstrap` on `PATH`
 
 ## Publishing Notes
 
@@ -210,11 +210,11 @@ Recommended GitHub release shape:
 After publishing, users can install directly without cloning:
 
 ```powershell
-uv tool install git+https://github.com/<owner>/<repo>.git
+uv tool install git+https://github.com/<owner>/tasklane.git
 ```
 
 ```bash
-uv tool install git+https://github.com/<owner>/<repo>.git
+uv tool install git+https://github.com/<owner>/tasklane.git
 ```
 
 ## Development
@@ -227,12 +227,12 @@ uv run --group dev pytest
 ## Repository Layout
 
 ```text
-prefect-command-scheduler/
+tasklane/
   CONTRIBUTING.md
   docs/
   RELEASING.md
   scripts/
-  src/prefect_command_scheduler/
+  src/tasklane/
   tests/
   bootstrap_prefect.py
   submit_experiment.py

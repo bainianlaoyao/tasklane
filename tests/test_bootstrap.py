@@ -1,7 +1,7 @@
 import pytest
 
-import prefect_command_scheduler.bootstrap as bootstrap
-from prefect_command_scheduler.bootstrap import (
+import tasklane.bootstrap as bootstrap
+from tasklane.bootstrap import (
     DEFAULT_QUEUES,
     FLOW_ENTRYPOINT,
     REPO_ROOT,

@@ -2,10 +2,10 @@ from io import StringIO
 
 import pytest
 
-import prefect_command_scheduler.flows as flows
-from prefect_command_scheduler.attach import COMMAND_STDERR_PREFIX, COMMAND_STDOUT_PREFIX, SCHEDULER_EVENT_PREFIX
-from prefect_command_scheduler.flows import build_execution_markdown, build_result_markdown, run_command
-from prefect_command_scheduler.models import CommandTask
+import tasklane.flows as flows
+from tasklane.attach import COMMAND_STDERR_PREFIX, COMMAND_STDOUT_PREFIX, SCHEDULER_EVENT_PREFIX
+from tasklane.flows import build_execution_markdown, build_result_markdown, run_command
+from tasklane.models import CommandTask
 from prefect.exceptions import CancelledRun
 
 

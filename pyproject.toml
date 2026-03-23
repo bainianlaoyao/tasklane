@@ -1,5 +1,5 @@
 [project]
-name = "prefect-command-scheduler"
+name = "tasklane"
 version = "0.1.0"
 description = "Resource-aware local command scheduler built on Prefect 3."
 readme = "README.md"
@@ -25,10 +25,12 @@ dependencies = [
 ]
 
 [project.scripts]
-pcs = "prefect_command_scheduler.cli:main"
-pcs-bootstrap = "prefect_command_scheduler.bootstrap:main"
-prefect-submit = "prefect_command_scheduler.cli:main"
-prefect-bootstrap = "prefect_command_scheduler.bootstrap:main"
+tasklane = "tasklane.cli:main"
+tasklane-bootstrap = "tasklane.bootstrap:main"
+pcs = "tasklane.cli:main"
+pcs-bootstrap = "tasklane.bootstrap:main"
+prefect-submit = "tasklane.cli:main"
+prefect-bootstrap = "tasklane.bootstrap:main"
 
 [dependency-groups]
 dev = [

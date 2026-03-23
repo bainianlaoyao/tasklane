@@ -12,8 +12,8 @@
 uv sync --group dev
 uv run --group dev pytest
 uv tool install -e . --force
-pcs --help
-pcs-bootstrap --help
+tasklane --help
+tasklane-bootstrap --help
 ```
 
 ## 3. Publish on GitHub
@@ -28,5 +28,5 @@ pcs-bootstrap --help
 If you later publish to PyPI, keep the GitHub install path working as the documented fallback:
 
 ```powershell
-uv tool install git+https://github.com/<owner>/<repo>.git
+uv tool install git+https://github.com/<owner>/tasklane.git
 ```

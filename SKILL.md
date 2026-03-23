@@ -1,9 +1,9 @@
 ---
-name: prefect-command-scheduler
-description: Use when submitting arbitrary shell or Python commands to a local Prefect 3 queue with explicit GPU/CPU resource metadata, or when bootstrapping and operating the Prefect command scheduler in D:\Data\DEV\prefect-command-scheduler.
+name: tasklane
+description: Use when submitting arbitrary shell or Python commands to a local Prefect 3 queue with explicit GPU/CPU resource metadata, or when bootstrapping and operating Tasklane in D:\Data\DEV\prefect-command-scheduler.
 ---
 
-# Prefect Command Scheduler
+# Tasklane
 
 ## State Model
 
@@ -21,17 +21,17 @@ description: Use when submitting arbitrary shell or Python commands to a local P
 ## Repository Layout
 
 - Entry points:
-  - `pcs`
-  - `pcs-bootstrap`
+- `tasklane`
+- `tasklane-bootstrap`
   - compatibility wrappers:
     - `submit_experiment.py`
     - `bootstrap_prefect.py`
 - Core package:
-  - `src/prefect_command_scheduler/models.py`
-  - `src/prefect_command_scheduler/routing.py`
-  - `src/prefect_command_scheduler/cli.py`
-  - `src/prefect_command_scheduler/flows.py`
-  - `src/prefect_command_scheduler/bootstrap.py`
+- `src/tasklane/models.py`
+- `src/tasklane/routing.py`
+- `src/tasklane/cli.py`
+- `src/tasklane/flows.py`
+- `src/tasklane/bootstrap.py`
 - Tests:
   - `tests/`
 
@@ -73,13 +73,13 @@ uv run prefect server start
 ### 3. Preview bootstrap plan
 
 ```powershell
-uv run pcs-bootstrap
+uv run tasklane-bootstrap
 ```
 
 ### 4. Apply bootstrap
 
 ```powershell
-uv run pcs-bootstrap --apply
+uv run tasklane-bootstrap --apply
 ```
 
 This creates or updates:
@@ -110,7 +110,7 @@ uv run prefect worker start --pool local-process --work-queue cpu-light --type p
 ### 6. Submit a command
 
 ```powershell
-uv run pcs `
+uv run tasklane `
   --cwd E:\freqtrade `
   --project tabicl `
   --resource gpu-exclusive `
@@ -171,6 +171,6 @@ Use these checks after edits:
 
 ```powershell
 uv run --group dev pytest
-uv run pcs --help
-uv run pcs-bootstrap
+uv run tasklane --help
+uv run tasklane-bootstrap
 ```

@@ -11,7 +11,7 @@ from .flows import run_command_task
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FLOW_ENTRYPOINT = "src/prefect_command_scheduler/flows.py:run_command_task"
+FLOW_ENTRYPOINT = "src/tasklane/flows.py:run_command_task"
 DEFAULT_WORK_POOL = "local-process"
 DEFAULT_QUEUES = ("gpu", "cpu-exclusive", "cpu-light")
 DEFAULT_QUEUE_LIMITS = {
@@ -236,7 +236,7 @@ def apply_bootstrap(work_pool_name: str = DEFAULT_WORK_POOL) -> None:
 
 
 def parse_bootstrap_args(argv: Sequence[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Bootstrap local Prefect resources for the command scheduler.")
+    parser = argparse.ArgumentParser(description="Bootstrap local Prefect resources for Tasklane.")
     parser.add_argument("--work-pool", default=DEFAULT_WORK_POOL)
     parser.add_argument("--apply", action="store_true", help="Create/update resources in the active Prefect server.")
     return parser.parse_args(list(argv))

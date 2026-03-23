@@ -3,8 +3,8 @@ from uuid import uuid4
 
 import pytest
 
-from prefect_command_scheduler.attach import SubmittedRun
-from prefect_command_scheduler.cli import build_command_task, main, parse_submit_args
+from tasklane.attach import SubmittedRun
+from tasklane.cli import build_command_task, main, parse_submit_args
 
 
 def test_parse_submit_args_keeps_original_command_after_double_dash() -> None:
@@ -93,7 +93,7 @@ def test_parse_submit_args_accepts_detach_flag() -> None:
 
 
 def test_main_uses_sys_argv_when_no_explicit_argv(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sys, "argv", ["submit_experiment.py", "--help"])
+    monkeypatch.setattr(sys, "argv", ["tasklane", "--help"])
 
     with pytest.raises(SystemExit) as exc:
         main()
@@ -139,8 +139,8 @@ def test_main_attaches_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
         captured["poll_interval"] = poll_interval
         return 0
 
-    monkeypatch.setattr("prefect_command_scheduler.cli.submit_task", fake_submit_task)
-    monkeypatch.setattr("prefect_command_scheduler.cli.attach_submitted_run", fake_attach_submitted_run)
+    monkeypatch.setattr("tasklane.cli.submit_task", fake_submit_task)
+    monkeypatch.setattr("tasklane.cli.attach_submitted_run", fake_attach_submitted_run)
 
     result = main(
         [
@@ -174,12 +174,12 @@ def test_main_skips_attach_in_detach_mode(monkeypatch: pytest.MonkeyPatch) -> No
         queue_name="gpu",
         resource_class="gpu-exclusive",
     )
-    monkeypatch.setattr("prefect_command_scheduler.cli.submit_task", lambda task: submitted)
+    monkeypatch.setattr("tasklane.cli.submit_task", lambda task: submitted)
 
     def fail_attach(*args, **kwargs):  # noqa: ANN002, ANN003
         raise AssertionError("attach should not be called in detach mode")
 
-    monkeypatch.setattr("prefect_command_scheduler.cli.attach_submitted_run", fail_attach)
+    monkeypatch.setattr("tasklane.cli.attach_submitted_run", fail_attach)
 
     result = main(
         [

@@ -1,5 +1,5 @@
-from prefect_command_scheduler.models import CommandTask
-from prefect_command_scheduler.routing import route_task
+from tasklane.models import CommandTask
+from tasklane.routing import route_task
 
 
 def test_gpu_exclusive_routes_to_gpu_deployment() -> None:

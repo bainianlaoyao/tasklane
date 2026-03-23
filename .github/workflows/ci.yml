@@ -32,5 +32,5 @@ jobs:
       - name: Verify installed commands
         run: |
           uv tool install -e . --force
-          pcs --help
-          pcs-bootstrap --help
+          tasklane --help
+          tasklane-bootstrap --help

@@ -1,4 +1,4 @@
-from prefect_command_scheduler.cli import main
+from tasklane.cli import main
 
 
 if __name__ == "__main__":

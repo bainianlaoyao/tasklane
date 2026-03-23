@@ -10,8 +10,8 @@ uv sync --group dev
 
 ```powershell
 uv run --group dev pytest
-uv run pcs --help
-uv run pcs-bootstrap
+uv run tasklane --help
+uv run tasklane-bootstrap
 ```
 
 ## Project Scope

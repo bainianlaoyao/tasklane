@@ -12,8 +12,10 @@ def test_pyproject_exposes_short_global_commands() -> None:
 
     scripts = data["project"]["scripts"]
 
-    assert scripts["pcs"] == "prefect_command_scheduler.cli:main"
-    assert scripts["pcs-bootstrap"] == "prefect_command_scheduler.bootstrap:main"
+    assert scripts["tasklane"] == "tasklane.cli:main"
+    assert scripts["tasklane-bootstrap"] == "tasklane.bootstrap:main"
+    assert scripts["pcs"] == "tasklane.cli:main"
+    assert scripts["pcs-bootstrap"] == "tasklane.bootstrap:main"
 
 
 def test_install_scripts_exist_for_windows_and_linux() -> None:

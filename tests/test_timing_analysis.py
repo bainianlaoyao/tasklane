@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from prefect_command_scheduler.timing_analysis import ObservedRun, analyze_timing_expectations
+from tasklane.timing_analysis import ObservedRun, analyze_timing_expectations
 
 
 def _dt(value: str) -> datetime:

@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from prefect_command_scheduler.attach import (
+from tasklane.attach import (
     COMMAND_STDERR_PREFIX,
     COMMAND_STDOUT_PREFIX,
     SCHEDULER_EVENT_PREFIX,
@@ -118,7 +118,7 @@ def test_attach_submitted_run_streams_scheduler_events_and_logs(monkeypatch: pyt
         },
     )
 
-    monkeypatch.setattr("prefect_command_scheduler.attach.get_client", lambda: fake_client)
+    monkeypatch.setattr("tasklane.attach.get_client", lambda: fake_client)
     output = StringIO()
 
     exit_code = attach_submitted_run(submitted, out=output, poll_interval=0.01)
@@ -146,7 +146,7 @@ def test_attach_submitted_run_cancels_remote_run_on_keyboard_interrupt(monkeypat
             raise KeyboardInterrupt
 
     fake_client = InterruptingClient(flow_runs=[], logs_by_offset={})
-    monkeypatch.setattr("prefect_command_scheduler.attach.get_client", lambda: fake_client)
+    monkeypatch.setattr("tasklane.attach.get_client", lambda: fake_client)
     output = StringIO()
 
     exit_code = attach_submitted_run(submitted, out=output, poll_interval=0.01)

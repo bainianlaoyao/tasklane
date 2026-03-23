@@ -1,6 +1,6 @@
 from pydantic import ValidationError
 
-from prefect_command_scheduler.models import CommandTask
+from tasklane.models import CommandTask
 
 
 def test_command_task_accepts_minimal_valid_payload() -> None:

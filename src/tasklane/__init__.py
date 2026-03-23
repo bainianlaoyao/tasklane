@@ -1,4 +1,4 @@
-"""Prefect command scheduler package."""
+"""Tasklane package."""
 
 from .models import CommandTask
 from .routing import RouteSpec, route_task

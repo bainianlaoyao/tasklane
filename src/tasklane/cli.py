@@ -23,7 +23,7 @@ class SubmitArgs:
 
 
 def parse_submit_args(argv: Sequence[str]) -> SubmitArgs:
-    parser = argparse.ArgumentParser(description="Submit a command to the Prefect scheduler.")
+    parser = argparse.ArgumentParser(description="Submit a command to Tasklane.")
     parser.add_argument("--cwd", required=True)
     parser.add_argument("--project")
     parser.add_argument("--resource", required=True, choices=RESOURCE_CLASSES)

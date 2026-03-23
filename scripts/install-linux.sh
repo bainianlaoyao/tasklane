@@ -31,7 +31,9 @@ uv tool update-shell
 
 echo
 echo "Installed commands:"
-echo "  pcs"
-echo "  pcs-bootstrap"
+echo "  tasklane"
+echo "  tasklane-bootstrap"
+echo "  pcs (legacy alias)"
+echo "  pcs-bootstrap (legacy alias)"
 echo
 echo "Open a new shell if the commands are not available immediately."

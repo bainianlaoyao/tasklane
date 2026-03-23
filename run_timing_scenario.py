@@ -18,9 +18,9 @@ import anyio
 from prefect.client.orchestration import get_client
 from prefect.settings import PREFECT_API_URL, temporary_settings
 
-from prefect_command_scheduler.bootstrap import apply_bootstrap
-from prefect_command_scheduler.models import CommandTask
-from prefect_command_scheduler.timing_analysis import ObservedRun, TimingAnalysis, analyze_timing_expectations
+from tasklane.bootstrap import apply_bootstrap
+from tasklane.models import CommandTask
+from tasklane.timing_analysis import ObservedRun, TimingAnalysis, analyze_timing_expectations
 
 
 DEFAULT_PORT = 4310
