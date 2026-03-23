@@ -12,6 +12,9 @@ from .attach import encode_command_output_message, encode_scheduler_event_messag
 from .state import RunRecord, SchedulerState
 
 
+WINDOWS_CONTROL_C_EXIT = 3221225786
+
+
 @dataclass
 class _LogWriter:
     path: Path
@@ -129,7 +132,7 @@ class Scheduler:
 
             active.stdout_thread.join(timeout=1)
             active.stderr_thread.join(timeout=1)
-            if current.cancel_requested:
+            if current.cancel_requested or _is_interrupt_exit_code(return_code):
                 status = "cancelled"
                 exit_code = 130
             else:
@@ -138,3 +141,7 @@ class Scheduler:
             active.log_writer.write(encode_scheduler_event_message("finished", status=status, exit_code=exit_code))
             self.state.finish_run(run_id, status=status, exit_code=exit_code)
             del self._active_runs[run_id]
+
+
+def _is_interrupt_exit_code(return_code: int) -> bool:
+    return int(return_code) in {-2, WINDOWS_CONTROL_C_EXIT}
