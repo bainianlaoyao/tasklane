@@ -224,6 +224,15 @@ uv sync --group dev
 uv run --group dev pytest
 ```
 
+## Agent Skill
+
+This repository also ships with a reusable agent skill:
+
+- [Skill Install Guide](./docs/SKILL-INSTALL.md)
+- [Skill File](./SKILL.md)
+
+Use it if you want Codex or Claude Code to understand Tasklane conventions and operating workflow automatically.
+
 ## Repository Layout
 
 ```text

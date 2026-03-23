@@ -27,3 +27,4 @@ def test_repository_has_open_source_metadata_docs() -> None:
     assert (REPO_ROOT / "LICENSE").exists()
     assert (REPO_ROOT / "CONTRIBUTING.md").exists()
     assert (REPO_ROOT / "RELEASING.md").exists()
+    assert (REPO_ROOT / "docs" / "SKILL-INSTALL.md").exists()
