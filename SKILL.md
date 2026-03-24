@@ -56,7 +56,7 @@ Built-in slot capacities:
 
 - `gpu-0 = 1`
 - `host-exclusive = 1`
-- `cpu-light = 2`
+- `cpu-light = 150`
 
 ## Standard Workflow
 
@@ -122,6 +122,21 @@ Use the daemon when:
 - keeping a shared queue alive across terminals
 - processing queued work without an attached submitter
 - supervising multiple submitters from one host process
+
+### 5. Inspect the queue
+
+```powershell
+uv run tasklane queue
+uv run tasklane queue --watch
+uv run tasklane queue --json
+```
+
+Use this when you need a direct view of:
+
+- queued runs
+- running runs
+- current resource occupancy
+- exit states of recent runs
 
 ### Scheduler Event Lines
 

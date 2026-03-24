@@ -27,7 +27,7 @@ The built-in slot model is:
 
 - `gpu-0 = 1`
 - `host-exclusive = 1`
-- `cpu-light = 2`
+- `cpu-light = 150`
 
 ## Install
 
@@ -59,6 +59,12 @@ uv tool install git+https://github.com/bainianlaoyao/tasklane.git
 ```bash
 uv tool install git+https://github.com/bainianlaoyao/tasklane.git
 ```
+
+## Documentation
+
+- English: this README
+- 中文文档: [docs/README.zh-CN.md](./docs/README.zh-CN.md)
+- Skill install guide: [docs/SKILL-INSTALL.md](./docs/SKILL-INSTALL.md)
 
 ## Quick Start
 
@@ -137,6 +143,26 @@ Useful for:
 - long-lived shared queues
 - keeping the scheduler alive across multiple terminals
 
+### 4. Inspect the queue visually
+
+Current queue snapshot:
+
+```powershell
+tasklane queue
+```
+
+Auto-refresh in terminal:
+
+```powershell
+tasklane queue --watch
+```
+
+Machine-readable output:
+
+```powershell
+tasklane queue --json
+```
+
 ## Attached vs Detached
 
 Default mode is attached.
@@ -205,6 +231,7 @@ This repository also ships with a reusable agent skill:
 
 - [Skill Install Guide](./docs/SKILL-INSTALL.md)
 - [Skill File](./SKILL.md)
+- [Chinese Guide](./docs/README.zh-CN.md)
 
 ## Repository Layout
 

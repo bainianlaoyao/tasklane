@@ -38,7 +38,7 @@ ROUTES: dict[ResourceClass, RouteSpec] = {
 RESOURCE_SLOT_CAPACITY = {
     "gpu-0": 1,
     "host-exclusive": 1,
-    "cpu-light": 2,
+    "cpu-light": 150,
 }
 
 

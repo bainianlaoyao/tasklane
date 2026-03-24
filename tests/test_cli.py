@@ -4,6 +4,8 @@ import pytest
 
 from tasklane.attach import SubmittedRun
 from tasklane.cli import build_command_task, main, parse_submit_args
+from tasklane.models import CommandTask
+from tasklane.state import SchedulerState
 
 
 def test_parse_submit_args_keeps_original_command_after_double_dash() -> None:
@@ -215,3 +217,76 @@ def test_main_runs_daemon_subcommand(monkeypatch: pytest.MonkeyPatch) -> None:
         "poll_interval": 0.5,
         "limit": 10,
     }
+
+
+def test_main_queue_subcommand_prints_table(capsys: pytest.CaptureFixture[str], tmp_path) -> None:  # noqa: ANN001
+    state = SchedulerState.initialize(tmp_path / "tasklane.db")
+    state.create_run(
+        CommandTask(
+            cwd=str(tmp_path),
+            command=["uv", "run", "python", "job.py"],
+            metadata={"resource_class": "cpu-light", "labels": []},
+            run_name="queue-demo",
+            project="demo",
+        )
+    )
+
+    result = main(["queue", "--db-path", str(tmp_path / "tasklane.db")])
+
+    assert result == 0
+    output = capsys.readouterr().out
+    assert "Tasklane Queue" in output
+    assert "queue-demo" in output
+    assert "cpu-light" in output
+    assert "queued" in output
+
+
+def test_main_queue_subcommand_prints_json(capsys: pytest.CaptureFixture[str], tmp_path) -> None:  # noqa: ANN001
+    state = SchedulerState.initialize(tmp_path / "tasklane.db")
+    state.create_run(
+        CommandTask(
+            cwd=str(tmp_path),
+            command=["uv", "run", "python", "job.py"],
+            metadata={"resource_class": "gpu-exclusive", "labels": []},
+            run_name="json-demo",
+            project="demo",
+        )
+    )
+
+    result = main(["queue", "--db-path", str(tmp_path / "tasklane.db"), "--json"])
+
+    assert result == 0
+    output = capsys.readouterr().out
+    assert '"run_name": "json-demo"' in output
+    assert '"resource_class": "gpu-exclusive"' in output
+
+
+def test_main_queue_subcommand_watch_refreshes_until_interrupted(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path,
+) -> None:  # noqa: ANN001
+    state = SchedulerState.initialize(tmp_path / "tasklane.db")
+    state.create_run(
+        CommandTask(
+            cwd=str(tmp_path),
+            command=["uv", "run", "python", "job.py"],
+            metadata={"resource_class": "cpu-light", "labels": []},
+            run_name="watch-demo",
+            project="demo",
+        )
+    )
+    sleeps = {"count": 0}
+
+    def fake_sleep(_: float) -> None:
+        sleeps["count"] += 1
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("tasklane.cli.time.sleep", fake_sleep)
+
+    result = main(["queue", "--db-path", str(tmp_path / "tasklane.db"), "--watch", "--interval", "0.1"])
+
+    assert result == 0
+    assert sleeps["count"] == 1
+    output = capsys.readouterr().out
+    assert "watch-demo" in output
