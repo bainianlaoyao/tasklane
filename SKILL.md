@@ -138,6 +138,22 @@ Use this when you need a direct view of:
 - current resource occupancy
 - exit states of recent runs
 
+### 6. Manage an existing run
+
+Use the run id from `tasklane queue`:
+
+```powershell
+uv run tasklane cancel <run-id>
+uv run tasklane interrupt <run-id>
+uv run tasklane delete <run-id>
+```
+
+Rules:
+
+- `cancel` is cooperative cancellation.
+- `interrupt` also attempts immediate PID-level termination for a running task.
+- `delete` only applies to non-active runs and also removes the local log file.
+
 ### Scheduler Event Lines
 
 Attached mode prints stable scheduler-prefixed lines:

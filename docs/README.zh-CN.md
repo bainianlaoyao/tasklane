@@ -164,6 +164,25 @@ tasklane `
 - detached 任务本身不会自动推进
 - 需要有一个 attach 提交者或 `tasklane daemon` 在处理队列
 
+## 任务管理
+
+拿到 `tasklane queue` 里的 `run_id` 之后，可以直接管理已有任务：
+
+```powershell
+tasklane cancel <run-id>
+tasklane interrupt <run-id>
+tasklane delete <run-id>
+```
+
+语义区别：
+
+- `cancel`
+  协作式取消。对 `queued` / `starting` 任务会立刻改成 `cancelled`；对 `running` 任务会先写入取消请求，再由调度器结束真实进程。
+- `interrupt`
+  比 `cancel` 更强。除了写入取消请求，还会按 PID 立即尝试终止正在运行的任务进程。
+- `delete`
+  删除一个非活动任务的本地记录和日志文件。对于正在运行或启动中的任务，应该先 `cancel` 或 `interrupt`。
+
 ## 状态模型
 
 Tasklane 不依赖 Prefect。

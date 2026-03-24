@@ -180,6 +180,25 @@ tasklane `
 
 Detached runs need some scheduler process to be active, usually `tasklane daemon`.
 
+## Task Management
+
+Use the run id from `tasklane queue` to manage an existing task:
+
+```powershell
+tasklane cancel <run-id>
+tasklane interrupt <run-id>
+tasklane delete <run-id>
+```
+
+Semantics:
+
+- `cancel`
+  For cooperative cancellation. Queued or starting runs become `cancelled` immediately. Running runs are marked for cancellation and the scheduler terminates them on the next reconcile loop.
+- `interrupt`
+  Stronger than `cancel` for running work. It records a cancellation request and also attempts to terminate the live process immediately by PID.
+- `delete`
+  Removes a non-active run record and its log file from local Tasklane storage. Active runs must be cancelled or interrupted first.
+
 ## Migration Note
 
 Older Tasklane revisions used Prefect for orchestration.

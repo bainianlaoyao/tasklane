@@ -290,3 +290,98 @@ def test_main_queue_subcommand_watch_refreshes_until_interrupted(
     assert sleeps["count"] == 1
     output = capsys.readouterr().out
     assert "watch-demo" in output
+
+
+def test_main_cancel_subcommand_marks_queued_run_cancelled(capsys: pytest.CaptureFixture[str], tmp_path) -> None:
+    state = SchedulerState.initialize(tmp_path / "tasklane.db")
+    run = state.create_run(
+        CommandTask(
+            cwd=str(tmp_path),
+            command=["python", "job.py"],
+            metadata={"resource_class": "cpu-light", "labels": []},
+            run_name="cancel-demo",
+        )
+    )
+
+    result = main(["cancel", run.run_id, "--db-path", str(tmp_path / "tasklane.db")])
+
+    assert result == 0
+    updated = state.get_run(run.run_id)
+    assert updated is not None
+    assert updated.status == "cancelled"
+    output = capsys.readouterr().out
+    assert "cancelled" in output
+    assert run.run_id in output
+
+
+def test_main_interrupt_subcommand_terminates_running_run(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path,
+) -> None:
+    state = SchedulerState.initialize(tmp_path / "tasklane.db")
+    run = state.create_run(
+        CommandTask(
+            cwd=str(tmp_path),
+            command=["python", "job.py"],
+            metadata={"resource_class": "gpu-exclusive", "labels": []},
+            run_name="interrupt-demo",
+        )
+    )
+    state.mark_running(run.run_id, pid=43210)
+    captured: dict[str, object] = {}
+
+    def fake_interrupt(pid: int) -> None:
+        captured["pid"] = pid
+
+    monkeypatch.setattr("tasklane.cli.interrupt_process", fake_interrupt)
+
+    result = main(["interrupt", run.run_id, "--db-path", str(tmp_path / "tasklane.db")])
+
+    assert result == 0
+    updated = state.get_run(run.run_id)
+    assert updated is not None
+    assert updated.cancel_requested is True
+    assert captured == {"pid": 43210}
+    output = capsys.readouterr().out
+    assert "interrupt_requested" in output
+    assert run.run_id in output
+
+
+def test_main_delete_subcommand_removes_run(capsys: pytest.CaptureFixture[str], tmp_path) -> None:
+    state = SchedulerState.initialize(tmp_path / "tasklane.db")
+    run = state.create_run(
+        CommandTask(
+            cwd=str(tmp_path),
+            command=["python", "job.py"],
+            metadata={"resource_class": "cpu-light", "labels": []},
+            run_name="delete-demo",
+        )
+    )
+
+    result = main(["delete", run.run_id, "--db-path", str(tmp_path / "tasklane.db")])
+
+    assert result == 0
+    assert state.get_run(run.run_id) is None
+    output = capsys.readouterr().out
+    assert "deleted" in output
+    assert run.run_id in output
+
+
+def test_main_delete_subcommand_rejects_running_run(capsys: pytest.CaptureFixture[str], tmp_path) -> None:
+    state = SchedulerState.initialize(tmp_path / "tasklane.db")
+    run = state.create_run(
+        CommandTask(
+            cwd=str(tmp_path),
+            command=["python", "job.py"],
+            metadata={"resource_class": "cpu-light", "labels": []},
+            run_name="delete-running-demo",
+        )
+    )
+    state.mark_running(run.run_id, pid=999)
+
+    result = main(["delete", run.run_id, "--db-path", str(tmp_path / "tasklane.db")])
+
+    assert result == 1
+    output = capsys.readouterr().err
+    assert "active" in output

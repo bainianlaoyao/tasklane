@@ -278,6 +278,19 @@ class SchedulerState:
         assert updated is not None
         return updated
 
+    def delete_run(self, run_id: str) -> RunRecord:
+        record = self.get_run(run_id)
+        if record is None:
+            raise KeyError(run_id)
+        if record.status in ACTIVE_STATUSES:
+            raise ValueError(f"cannot delete active run: {run_id}")
+
+        self._connection.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
+        self._connection.commit()
+        if record.log_path.exists():
+            record.log_path.unlink()
+        return record
+
     def _row_to_record(self, row: sqlite3.Row) -> RunRecord:
         task_payload = json.loads(row["task_payload"])
         return RunRecord(

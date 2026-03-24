@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import signal
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -40,6 +43,24 @@ class QueueArgs:
     watch: bool
     interval: float
     json: bool
+
+
+@dataclass(frozen=True)
+class CancelArgs:
+    run_id: str
+    db_path: str | None
+
+
+@dataclass(frozen=True)
+class InterruptArgs:
+    run_id: str
+    db_path: str | None
+
+
+@dataclass(frozen=True)
+class DeleteArgs:
+    run_id: str
+    db_path: str | None
 
 
 def parse_submit_args(argv: Sequence[str]) -> SubmitArgs:
@@ -97,6 +118,30 @@ def parse_queue_args(argv: Sequence[str]) -> QueueArgs:
     )
 
 
+def parse_cancel_args(argv: Sequence[str]) -> CancelArgs:
+    parser = argparse.ArgumentParser(description="Cancel a Tasklane run.")
+    parser.add_argument("run_id")
+    parser.add_argument("--db-path")
+    namespace = parser.parse_args(list(argv))
+    return CancelArgs(run_id=namespace.run_id, db_path=namespace.db_path)
+
+
+def parse_interrupt_args(argv: Sequence[str]) -> InterruptArgs:
+    parser = argparse.ArgumentParser(description="Interrupt a running Tasklane run.")
+    parser.add_argument("run_id")
+    parser.add_argument("--db-path")
+    namespace = parser.parse_args(list(argv))
+    return InterruptArgs(run_id=namespace.run_id, db_path=namespace.db_path)
+
+
+def parse_delete_args(argv: Sequence[str]) -> DeleteArgs:
+    parser = argparse.ArgumentParser(description="Delete a non-active Tasklane run.")
+    parser.add_argument("run_id")
+    parser.add_argument("--db-path")
+    namespace = parser.parse_args(list(argv))
+    return DeleteArgs(run_id=namespace.run_id, db_path=namespace.db_path)
+
+
 def _parse_env_overrides(entries: Sequence[str]) -> dict[str, str]:
     env: dict[str, str] = {}
     for entry in entries:
@@ -134,6 +179,10 @@ def print_submitted_event(submitted: SubmittedRun) -> None:
     )
 
 
+def _initialize_state(db_path: str | None) -> SchedulerState:
+    return SchedulerState.initialize(db_path) if db_path else SchedulerState.initialize()
+
+
 def _run_daemon(argv: Sequence[str]) -> int:
     args = parse_daemon_args(argv)
     state = SchedulerState.initialize()
@@ -147,7 +196,7 @@ def _run_daemon(argv: Sequence[str]) -> int:
 
 def _run_queue(argv: Sequence[str]) -> int:
     args = parse_queue_args(argv)
-    state = SchedulerState.initialize(args.db_path) if args.db_path else SchedulerState.initialize()
+    state = _initialize_state(args.db_path)
     try:
         while True:
             runs = state.list_runs()
@@ -160,6 +209,93 @@ def _run_queue(argv: Sequence[str]) -> int:
             time.sleep(args.interval)
     except KeyboardInterrupt:
         return 0
+
+
+def _run_cancel(argv: Sequence[str]) -> int:
+    args = parse_cancel_args(argv)
+    state = _initialize_state(args.db_path)
+    try:
+        updated = state.request_cancel(args.run_id)
+    except KeyError:
+        print(f"Unknown run id: {args.run_id}", file=sys.stderr)
+        return 1
+
+    event = "cancelled" if updated.status == "cancelled" else "cancel_requested"
+    fields: dict[str, object] = {
+        "run_id": updated.run_id,
+        "status": updated.status,
+    }
+    if updated.pid is not None:
+        fields["pid"] = updated.pid
+    if updated.exit_code is not None:
+        fields["exit_code"] = updated.exit_code
+    print(format_scheduler_event_line(event, **fields))
+    return 0
+
+
+def interrupt_process(pid: int) -> None:
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return
+    os.kill(pid, signal.SIGTERM)
+
+
+def _run_interrupt(argv: Sequence[str]) -> int:
+    args = parse_interrupt_args(argv)
+    state = _initialize_state(args.db_path)
+    run = state.get_run(args.run_id)
+    if run is None:
+        print(f"Unknown run id: {args.run_id}", file=sys.stderr)
+        return 1
+
+    updated = state.request_cancel(args.run_id)
+    interrupted_pid: int | None = None
+    if run.status == "running" and run.pid is not None:
+        try:
+            interrupt_process(run.pid)
+            interrupted_pid = run.pid
+        except OSError as exc:
+            print(f"Failed to interrupt run {args.run_id}: {exc}", file=sys.stderr)
+            return 1
+        except subprocess.CalledProcessError as exc:
+            print(f"Failed to interrupt run {args.run_id}: {exc}", file=sys.stderr)
+            return 1
+
+    fields: dict[str, object] = {
+        "run_id": updated.run_id,
+        "status": updated.status,
+    }
+    if interrupted_pid is not None:
+        fields["pid"] = interrupted_pid
+    print(format_scheduler_event_line("interrupt_requested", **fields))
+    return 0
+
+
+def _run_delete(argv: Sequence[str]) -> int:
+    args = parse_delete_args(argv)
+    state = _initialize_state(args.db_path)
+    try:
+        deleted = state.delete_run(args.run_id)
+    except KeyError:
+        print(f"Unknown run id: {args.run_id}", file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(
+        format_scheduler_event_line(
+            "deleted",
+            run_id=deleted.run_id,
+            status=deleted.status,
+        )
+    )
+    return 0
 
 
 def render_queue_snapshot(runs: list[RunRecord], *, as_json: bool) -> str:
@@ -306,6 +442,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_daemon(effective_argv[1:])
     if effective_argv and effective_argv[0] == "queue":
         return _run_queue(effective_argv[1:])
+    if effective_argv and effective_argv[0] == "cancel":
+        return _run_cancel(effective_argv[1:])
+    if effective_argv and effective_argv[0] == "interrupt":
+        return _run_interrupt(effective_argv[1:])
+    if effective_argv and effective_argv[0] == "delete":
+        return _run_delete(effective_argv[1:])
 
     args = parse_submit_args(effective_argv)
     state = SchedulerState.initialize()
